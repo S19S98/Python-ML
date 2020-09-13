@@ -1,0 +1,264 @@
+
+import itertools
+import numpy as np
+import matplotlib.pyplot as plt
+from matplotlib.ticker import NullFormatter
+import pandas as pd
+import numpy as np
+import matplotlib.ticker as ticker
+from sklearn import preprocessing
+%matplotlib inline
+
+
+
+# setting the random seed for similar results on each run
+np.random.seed(7)
+
+!wget -O loan_train.csv https://s3-api.us-geo.objectstorage.softlayer.net/cf-courses-data/CognitiveClass/ML0101ENv3/labs/loan_train.csv
+
+df = pd.read_csv('loan_train.csv')
+
+df['due_date'] = pd.to_datetime(df['due_date'])
+df['effective_date'] = pd.to_datetime(df['effective_date'])
+
+df['loan_status'].value_counts()
+
+      PAIDOFF       260
+      COLLECTION     86
+      Name: loan_status, dtype: int64
+      
+      import seaborn as sns
+
+bins = np.linspace(df.Principal.min(), df.Principal.max(), 10)
+g = sns.FacetGrid(df, col="Gender", hue="loan_status", palette="Set1", col_wrap=2)
+g.map(plt.hist, 'Principal', bins=bins, ec="k")
+
+g.axes[-1].legend()
+
+
+
+bins = np.linspace(df.age.min(), df.age.max(), 10)
+g = sns.FacetGrid(df, col="Gender", hue="loan_status", palette="Set1", col_wrap=2)
+g.map(plt.hist, 'age', bins=bins, ec="k")
+
+g.axes[-1].legend()
+
+
+
+df['dayofweek'] = df['effective_date'].dt.dayofweek
+bins = np.linspace(df.dayofweek.min(), df.dayofweek.max(), 10)
+g = sns.FacetGrid(df, col="Gender", hue="loan_status", palette="Set1", col_wrap=2)
+g.map(plt.hist, 'dayofweek', bins=bins, ec="k")
+g.axes[-1].legend()
+
+
+
+df['Month'] = df.due_date.dt.month
+bins = np.linspace(df.Month.min()-1, df.Month.max()+1, 10)
+g = sns.FacetGrid(df, col="Gender", hue="loan_status", palette="Set1", col_wrap=2)
+g.map(plt.hist, 'Month', bins=bins, ec="k")
+g.axes[-1].legend()
+
+
+
+df['weekend'] = df['dayofweek'].apply(lambda x: 1 if (x>3)  else 0)
+
+
+
+df.groupby(['Gender'])['loan_status'].value_counts(normalize=True)
+
+
+
+df['Gender'].replace(to_replace=['male','female'], value=[0,1],inplace=True)
+
+
+df['deadline']=df['due_date']-df['effective_date']
+
+df.groupby(['Gender'])['loan_status'].value_counts(normalize=True)
+
+df['Gender'].replace(to_replace=['male','female'], value=[0,1],inplace=True)
+
+
+
+df['deadline']=df['due_date']-df['effective_date']
+
+
+df['deadline']=df['deadline'].dt.days
+
+
+df.groupby(['education'])['loan_status'].value_counts(normalize=True)
+
+
+len(df[df.education=='Master or Above'])
+
+
+
+Feature = df[['Principal','terms','age','Gender','weekend','dayofweek']]
+Feature = pd.concat([Feature,pd.get_dummies(df['education'])], axis=1)
+Feature.drop(['Master or Above'], axis = 1,inplace=True)
+
+
+X = Feature
+y = df['loan_status'].replace(to_replace=['PAIDOFF','COLLECTION'], value=[0,1]).values
+
+X= preprocessing.StandardScaler().fit_transform(X)
+
+
+
+
+from sklearn.metrics import jaccard_similarity_score
+from sklearn.metrics import f1_score
+from sklearn.metrics import log_loss
+from sklearn.model_selection import cross_val_score
+
+X_train, y_train=X,y
+
+X_train.shape, y_train.shape
+trainScores={}
+
+
+
+
+from sklearn.neighbors import KNeighborsClassifier
+
+bestScore=0.0
+accList=[]
+
+for k in range(3,12):
+    
+    clf_knn = KNeighborsClassifier(n_neighbors=k,algorithm='auto')
+    
+    # using 10 fold cross validation for scoring the classifier's accuracy
+    scores = cross_val_score(clf_knn, X, y, cv=10)
+    score=scores.mean()
+    accList.append(score)
+    
+    if score > bestScore:
+        bestScore=score
+        best_clf=clf_knn
+        bestK=k
+        
+print("Best K is :",bestK,"| Cross validation Accuracy :",bestScore)
+clf_knn=best_clf
+
+      Best K is : 8 | Cross validation Accuracy : 0.752268907563
+      
+      
+
+
+clf_knn.fit(X_train,y_train)
+y_pred=best_clf.predict(X_train)
+trainScores['KNN-f1-score']=f1_score(y_train, y_pred, average='weighted')
+
+trainScores
+#{'KNN-f1-score': 0.77018435586819922, 'KNN-jaccard': 0.7947976878612717}
+
+
+
+
+
+from sklearn import tree
+
+clf_tree = tree.DecisionTreeClassifier()
+clf_tree = clf_tree.fit(X_train, y_train)
+
+y_pred=clf_tree.predict(X_train)
+trainScores['Tree-jaccard']=jaccard_similarity_score(y_train, y_pred)
+trainScores['Tree-f1-score']=f1_score(y_train, y_pred, average='weighted')
+
+trainScores
+
+"""
+{'KNN-f1-score': 0.77018435586819922,
+ 'KNN-jaccard': 0.7947976878612717,
+ 'Tree-f1-score': 0.92492702082098499,
+ 'Tree-jaccard': 0.9277456647398844}
+
+"""
+
+
+
+pip install graphviz
+pip install pydotplus
+import graphviz 
+import pydotplus
+
+dot_data = tree.export_graphviz(clf_tree, out_file=None, 
+                     feature_names=['Principal',
+                                    'terms','age',
+                                    'Gender',
+                                    'weekend',
+                                    'Bechalor',
+                                    'High School or Below',
+                                    'college',
+                                    'dayofweek',
+                                     #'deadline'
+#                                     ,'Month'
+                                   ],  
+                     class_names='loan_status',  
+                     filled=True, rounded=True,  
+                     special_characters=True) 
+
+graph = pydotplus.graph_from_dot_data(dot_data)
+graph.set_size('"8,8!"')
+gvz_graph = graphviz.Source(graph.to_string())
+
+gvz_graph
+
+y_train=y_train.astype(float)
+from sklearn import svm
+
+clf_svm = svm.LinearSVC(random_state=7)
+clf_svm.fit(X_train, y_train)  
+
+y_pred=clf_svm.predict(X_train)
+
+
+trainScores['SVM-jaccard']=jaccard_similarity_score(y_train, y_pred)
+trainScores['SVM-f1-score']=f1_score(y_train, y_pred, average='weighted')
+trainScores
+
+
+"""
+{'KNN-f1-score': 0.77018435586819922,
+ 'KNN-jaccard': 0.7947976878612717,
+ 'SVM-f1-score': 0.6689062277741139,
+ 'SVM-jaccard': 0.75144508670520227,
+ 'Tree-f1-score': 0.92492702082098499,
+ 'Tree-jaccard': 0.9277456647398844}
+
+"""
+
+
+from sklearn.linear_model import LogisticRegression
+
+clf_log = LogisticRegression(random_state=0, solver='lbfgs',
+                         multi_class='multinomial')
+clf_log.fit(X_train, y_train)
+
+y_pred=clf_log.predict(X_train)
+y_proba=clf_log.predict_proba(X_train)
+
+testScores['LogReg-logLoss']=log_loss(testy, proba)
+
+trainScores['LogReg-jaccard']=jaccard_similarity_score(y_train, y_pred)
+trainScores['LogReg-f1-score']=f1_score(y_train, y_pred, average='weighted')  
+trainScores['LogReg-logLoss']=log_loss(y_train, y_proba)
+
+
+trainScores
+
+"""
+{'KNN-f1-score': 0.77018435586819922,
+ 'KNN-jaccard': 0.7947976878612717,
+ 'LogReg-f1-score': 0.70883990371506023,
+ 'LogReg-jaccard': 0.76300578034682076,
+ 'LogReg-logLoss': 0.47022255664816026,
+ 'SVM-f1-score': 0.6689062277741139,
+ 'SVM-jaccard': 0.75144508670520227,
+ 'Tree-f1-score': 0.92492702082098499,
+ 'Tree-jaccard': 0.9277456647398844}
+
+"""
+
+
